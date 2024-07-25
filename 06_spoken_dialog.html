@@ -1,0 +1,116 @@
+<html lang="ja">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="Content-Style-Type" content="text/css">
+<meta http-equiv="Content-Script-Type" content="text/javascript">
+<title>Spoken Dialog by Javascript</title>
+</head>
+<body>
+
+<h1>課題：音声対話</h1>
+
+<p>
+<button id="startButton">start</button>
+<button id="stopButton">stop</button>
+</p>
+
+<p>
+<div id="resultOutput"></div>
+</p>
+
+<script>
+var response = {
+    "あなたは誰ですか":"わたしはアレクサではありません",
+    "何歳ですか":"え、わたし、何歳にみえますか",
+    "元気ですか":"元気ですよー",
+    "好きな食べ物は":"焼肉です",
+    "おーい":"聞こえてますよ",
+    "ぬるぽ":"ガッ",
+    "早口言葉":"ラバかロバかロバかラバか何故か是非分からないからラバロバ比べた"
+};
+const startButton = document.querySelector('#startButton');
+const stopButton = document.querySelector('#stopButton');
+const resultOutput = document.querySelector('#resultOutput');
+
+if (!'SpeechSynthesisUtterance' in window) {
+    alert("あなたのブラウザはSpeech Synthesis APIに未対応です。");
+}
+const tts = new SpeechSynthesisUtterance();
+tts.lang = "ja-JP";
+tts.rate = 1.0;
+tts.pitch = 1.0;
+tts.volume = 1.0;
+
+SpeechRecognition = webkitSpeechRecognition || SpeechRecognition;
+if (!'SpeechRecognition' in window) {
+    alert("あなたのブラウザはSpeech Recognition APIに未対応です。");
+}
+
+const asr = new SpeechRecognition();
+asr.lang = "ja-JP";
+asr.interimResults = true;
+asr.continuous = true;
+
+let output = '';
+
+// 認識結果が出力されたときのイベントハンドラ
+asr.onresult = function(event){
+    let transcript = event.results[event.resultIndex][0].transcript;
+    let output_not_final = '';
+    let foundResponse = false;
+    if (event.results[event.resultIndex].isFinal) {
+        asr.abort();
+        if (transcript == "ヌルポ") transcript = "ぬるぽ";
+        // 部分一致の実装
+        for (let key in response) {
+            //keyが認識結果を含む場合
+            if (key.includes(transcript)) {
+                if (key == "早口言葉") tts.rate = 2.0; //早口言葉にするために再生速度を上げる
+                foundResponse = true;
+                output += 'You: ' + transcript + '<br>Response: ' + response[key] + '<br><br>';
+                tts.text = response[key];
+                break;
+            }
+        }
+        if (!foundResponse) {
+            //認識結果がkeyを含む場合
+            for (let key in response) {
+                if (transcript.includes(key)) {
+                    if (key == "早口言葉") tts.rate = 2.0;
+                    foundResponse = true;
+                    output += 'You: ' + transcript + '<br>Response: ' + response[key] + '<br><br>';
+                    tts.text = response[key];
+                    break;
+                }
+            }
+        }
+        // Undefinedの代わりに自然な応答
+        if (!foundResponse) {
+            output += 'You: ' + transcript + '<br>Response: ' + "すみません。よくわかりません。" + '<br><br>';
+            tts.text = "すみません。よくわかりません。";
+        }
+	    tts.onend = function(event){
+            tts.rate = 1.0;
+	        asr.start();
+	    }
+	    speechSynthesis.speak(tts);
+    } else { // 結果がまだ未確定のとき
+        output_not_final = 'You: <span style="color:#ddd;">' + transcript + '</span>';
+    }
+    resultOutput.innerHTML = output + output_not_final;
+}
+
+// 開始ボタンのイベントハンドラ
+startButton.addEventListener('click', function() {
+    asr.start();
+})
+
+// 停止ボタンのイベントハンドラ
+stopButton.addEventListener('click', function() {
+    asr.stop();
+})
+</script>
+
+</body>
+</html>
