@@ -1,0 +1,205 @@
+<html lang="ja">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="Content-Style-Type" content="text/css">
+<meta http-equiv="Content-Script-Type" content="text/javascript">
+<title>おじさんがいろいろ答える音声対話システム by Javascript</title>
+</head>
+<body>
+
+<h1>おじさんがいろいろ答える音声対話システム</h1>
+
+<p>
+<button id="startButton">start</button>
+<button id="stopButton">stop</button>
+</p>
+
+<p>
+<label for="username">名前を入力してください:</label>
+<input type="text" id="username" name="username">
+</p>
+
+<p>
+<div id="resultOutput"></div>
+</p>
+
+<script>
+// 応答の定義（ハッシュ）
+var response = {
+    "あなた,誰": "おじさんはおじさんダヨ〜❗😆👍 でもそんなおじさんも悪くないデショ❓ナンチャッテ〜😂💦 おじさんはいつでも{username}ちゃんの応援団だヨ～📣❤️",
+    "何歳": "おじさん、何歳に見えるカナ〜❓😆 若く見られたら嬉しいナ〜😁💦 まぁ、年齢は気持ちの問題ダヨ〜❤️✨ ナンチャッテ🤣✨",
+    "元気": "おじさんは元気ダヨ〜💪😆✨ いつでもフルパワーで頑張ってるんだゼ〜❗️😎👍 {username}ちゃんも元気で過ごしてネ〜❤️✨",
+    "おはよう": "おはよう、{username}ちゃん❗❗ 昨日はちゃんと寝れたかな❓ おじさんは朝からコーヒーを淹れて☕ほっと一息ついてるよ😁💕そういえばこの前素敵なカフェを見つけたよ🍰☕ 🍪今度{username}ちゃんと行きたいな😍💖 今日も頑張ってね💪😊 おじさんはいつも{username}ちゃんの味方だよ😋🧡 それじゃ、いい一日を✋🌈"
+};
+
+var appid = 'dj00aiZpPVRKRTNjT2hGZ24wUCZzPWNvbnN1bWVyc2VjcmV0Jng9ODE-';
+
+const startButton = document.querySelector('#startButton'); // 開始ボタン
+const stopButton = document.querySelector('#stopButton'); // 停止ボタン
+const resultOutput = document.querySelector('#resultOutput'); // 結果出力エリア
+
+if (!'SpeechSynthesisUtterance' in window) {
+    alert("アララ～💦💻{username}ちゃんのブラウザはね、Speech Synthesis APIには未対応みたいなんだ～😅💔 ごめんネ～、おじさんもちょっとびっくりしちゃったよ❗😲💦 {username}ちゃんとお話し🗣️するの楽しみにしてるヨ～❗😁💖 待ってるからネ😉👍✨");
+}
+const tts = new SpeechSynthesisUtterance(); // TTSインスタンスを生成
+tts.lang = "ja-JP"; // 言語(日本語)、英語の場合はen-US
+tts.rate = 1.0; // 速度
+tts.pitch = 1.0; // 声の高さ
+tts.volume = 1.0; // 音量
+
+//音声リストが更新されたときのイベント, 声を男性(Microsoft Ichiro)に変更
+speechSynthesis.onvoiceschanged = function() {
+    var voice = speechSynthesis.getVoices().find(function(voice){
+        return voice.name === 'Microsoft Ichiro - Japanese (Japan)';
+    });
+    if (voice) {
+        tts.voice = voice;
+    }
+};
+
+SpeechRecognition = webkitSpeechRecognition || SpeechRecognition;
+if (!'SpeechRecognition' in window) {
+    alert("アララ～💦💻{username}ちゃんのブラウザはね、Speech Recognition APIには未対応みたいなんだ～😅💔 ごめんネ～、おじさんもちょっとびっくりしちゃったよ❗😲💦 {username}ちゃんとお話し🗣️するの楽しみにしてるヨ～❗😁💖 待ってるからネ😉👍✨");
+}
+
+const regEmoji = new RegExp(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/, 'g');
+const removeEmoji = input => (
+    // 絵文字を空文字('')に置き換える
+    input.replace(regEmoji, '')
+)
+
+const asr = new SpeechRecognition(); // ASRインスタンスを生成
+asr.lang = "ja-JP"; // 言語（日本語）
+asr.interimResults = true; // 途中結果出力をオン
+asr.continuous = true; // 継続入力をオン
+
+let output = ''; // 出力
+let userLocation;
+
+// 認識結果が出力されたときのイベントハンドラ
+asr.onresult = function(event){
+    let transcript = event.results[event.resultIndex][0].transcript; // 結果文字列
+
+    let output_not_final = '';
+    if (event.results[event.resultIndex].isFinal) { // 結果が確定（Final）のとき
+        asr.abort(); // 音声認識を停止
+
+        // ユーザ名の取得をここで行う
+        let username = document.querySelector('#username').value || 'キミ';
+
+        let url;
+        let answer;
+        userLocation = 'undefined';
+
+        let keys = Object.keys(response);
+        // 正規表現を使って質問されている部分を抽出
+        let matchQuestion = transcript.match(/(.*)って何(.*)/);
+        let matchWeather = transcript.match(/(.*)の天気(.*)/);
+
+        if (matchQuestion && matchQuestion[1]) { //質問文の抽出した部分を検索するurlを作成
+            console.log("抽出された部分:", matchQuestion[1]);
+            url = 'https://www.google.com/search?q=' + matchQuestion[1];
+            window.open(url);
+            answer = `${username}ちゃんのために検索したんダ〜📱✨ おじさん、頑張っちゃったヨ〜😆❗️ 何かいい情報見つかったカナ❓ 知りたいことがあったら、何でも聞いてネ〜💪💖`;
+        } else if (matchWeather && matchWeather[1]) {
+            userLocation = matchWeather[1];
+            var geo = "https://map.yahooapis.jp/geocode/V1/geoCoder?appid=" + appid + "&output=json&query=" + matchWeather[1] + "&output=json&callback=onGotGeo";
+            callJSONP(geo);
+            output += transcript + ' => ';
+            return;
+        } else if (transcript.indexOf("何時") > -1 || transcript.indexOf("時刻") > -1){
+            let d = new Date();
+            answer = "今は" + d.getHours() + "時" + d.getMinutes() + "分だヨ～☀️✨今日もガンバッテいこうネ～💪😊";
+        } else { //その他の質問の場合
+            keys.forEach(function(key) {
+                let flag = true;
+                console.log(transcript);
+                key.split(',').forEach(function(word) {
+                    let pattern = new RegExp(word);
+                    let flag_test = pattern.test(transcript); // マッチしたらtrue, しなかったらfalse
+                    flag = flag && flag_test; // 両方trueならtrue
+                    console.log(pattern + '+' + ':' + flag_test);
+                });
+
+                if(flag){
+                    answer = response[key].replace(/{username}/g, username);
+                    console.log(key + " : " + answer);
+                }
+            });
+        }
+
+        if(typeof answer == 'undefined'){
+            answer = `${username}ちゃん、ごめんネ〜💦 ちょっとわからなかったヨ〜😅 おじさん、${username}ちゃんのためにもっと頑張るネ❗️`;
+        }
+
+        output += transcript + ' => ' + answer + '<br>';
+
+        tts.text = removeEmoji(answer);
+
+        // 再生が終了（end）ときのイベントハンドラ（終了したときに実行される）
+        tts.onend = function(event){
+            asr.start(); // 音声認識を再開
+        }
+
+        speechSynthesis.speak(tts); // 再生
+    } else { // 結果がまだ未確定のとき
+        output_not_final = '<span style="color:#ddd;">' + transcript + '</span>';
+    }
+    resultOutput.innerHTML = output + output_not_final;
+}
+
+//JSONPを実行する関数
+function callJSONP(url) {
+    console.log(url);
+    var target = document.createElement('script');
+    target.charset = 'utf-8';
+    target.src = url;
+    document.body.appendChild(target);
+}
+
+//JSONPの結果として実行される関数
+function onGotGeo( result ) {
+    let lct = result.Feature[0].Geometry.Coordinates;
+    var url = "https://map.yahooapis.jp/weather/V1/place?appid=" + appid + "&coordinates=" + lct + "&output=json&callback=showResult";
+    callJSONP(url);
+}
+
+function showResult( result ) {
+    let nowRf = result.Feature[0].Property.WeatherList.Weather[0].Rainfall;
+    let anHourLaterRf = result.Feature[0].Property.WeatherList.Weather[6].Rainfall;
+    console.log(result);
+    let now;
+    let hour;
+    now = nowRf == 0 ? "晴れ☀" : "雨☔";
+    hour = anHourLaterRf == 0 ? "晴れ☀" : "雨☔";
+    let answer = userLocation + "の今の天気🌤️は" + now +  "ダヨ〜✨1時間後は" + hour + "みたいダネ〜❗😁ナンチャッテ😆";
+    output += answer + '<br>';
+    tts.text = removeEmoji(answer);
+    // 再生が終了（end）ときのイベントハンドラ（終了したときに実行される）
+    tts.onend = function(event){
+        asr.start(); // 音声認識を再開
+    }
+    speechSynthesis.speak(tts); // 再生
+    resultOutput.innerHTML = output;
+}
+
+// 開始ボタンのイベントハンドラ
+startButton.addEventListener('click', function() {
+    username = document.querySelector('#username').value || 'キミ';
+    asr.start();
+})
+
+// 停止ボタンのイベントハンドラ
+stopButton.addEventListener('click', function() {
+    asr.abort();
+    asr.stop();
+})
+</script>
+
+<p>
+    Web Services by Yahoo! JAPAN （https://developer.yahoo.co.jp/sitemap/）
+</p>
+
+</body>
+</html>
